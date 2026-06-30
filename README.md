@@ -127,16 +127,3 @@ pytest
 ## Data Ethics Note
 
 All records in `data/synthetic_cases.csv` are generated from fictional text templates. The project is designed to demonstrate case triage, NLP-assisted routing, workflow management and dashboarding patterns without using sensitive or personal information.
-
-## Suggested Screenshots
-
-Capture the following for your portfolio:
-
-- Dashboard overview
-- New case submission showing triage explanation
-- Case review update flow
-- Manager SLA and audit-trail view
-
-## CV Wording
-
-Built an Intelligent Case Management Assistant using Python, Streamlit, Pandas, Scikit-learn and Plotly to automate case triage, priority scoring, SLA monitoring and team routing using synthetic public-sector case data. Designed explainable classification rules, audit logging and interactive dashboards to support operational visibility, workload management and data-driven decision making.
