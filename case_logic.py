@@ -13,37 +13,15 @@ from typing import Iterable
 
 import pandas as pd
 
+from config import SLA_DAYS_BY_PRIORITY, STATUS_OPTIONS, TEAMS_BY_CATEGORY
+
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
-except ImportError:  # pragma: no cover - exercised only in lean local runtimes
+except ImportError:  # pragma: no cover
     TfidfVectorizer = None
     cosine_similarity = None
 
-
-CATEGORIES = [
-    "Refund",
-    "Payment Issue",
-    "Compliance/Fraud",
-    "Missing Documents",
-    "General Query",
-]
-
-TEAMS_BY_CATEGORY = {
-    "Compliance/Fraud": "Compliance Team",
-    "Refund": "Refunds Team",
-    "Payment Issue": "Payments Team",
-    "Missing Documents": "Customer Support",
-    "General Query": "Customer Support",
-}
-
-SLA_DAYS_BY_PRIORITY = {
-    "High": 3,
-    "Medium": 7,
-    "Low": 14,
-}
-
-STATUS_OPTIONS = ["New", "In Progress", "Escalated", "Closed"]
 
 KEYWORDS_BY_CATEGORY = {
     "Compliance/Fraud": [
@@ -70,6 +48,7 @@ KEYWORDS_BY_CATEGORY = {
     "Payment Issue": [
         "payment",
         "failed payment",
+        "payment failed",
         "card declined",
         "direct debit",
         "bank transfer",
@@ -149,29 +128,27 @@ class TriageResult:
     priority: str
     assigned_team: str
     sla_days: int
+    confidence: float
+    explanation: str
 
 
 def normalise_text(text: str) -> str:
     """Return lower-case text suitable for keyword matching."""
-
     return " ".join(str(text or "").lower().split())
 
 
-def _contains_any(text: str, terms: Iterable[str]) -> bool:
-    return any(term in text for term in terms)
+def _matched_terms(text: str, terms: Iterable[str]) -> list[str]:
+    """Return terms found in the normalised input text."""
+    return [term for term in terms if term in text]
 
 
-def classify_category(description: str) -> str:
-    """Classify case text into the portfolio categories.
-
-    The deterministic rules run first. If none match, a small TF-IDF similarity
-    model compares the description to synthetic labelled examples.
-    """
-
+def classify_category(description: str) -> tuple[str, float, str]:
+    """Classify case text and return category, confidence and reason."""
     text = normalise_text(description)
     for category, keywords in KEYWORDS_BY_CATEGORY.items():
-        if _contains_any(text, keywords):
-            return category
+        matches = _matched_terms(text, keywords)
+        if matches:
+            return category, 0.95, f"Keyword match: {', '.join(matches[:3])}"
 
     example_texts = [item[0] for item in TRAINING_EXAMPLES]
     labels = [item[1] for item in TRAINING_EXAMPLES]
@@ -180,9 +157,12 @@ def classify_category(description: str) -> str:
         vectorizer = TfidfVectorizer(ngram_range=(1, 2), stop_words="english")
         matrix = vectorizer.fit_transform(example_texts + [text])
         scores = cosine_similarity(matrix[-1], matrix[:-1]).flatten()
-        return labels[int(scores.argmax())] if scores.max() > 0 else "General Query"
+        best_idx = int(scores.argmax())
+        best_score = float(scores[best_idx])
+        if best_score > 0:
+            return labels[best_idx], round(max(0.55, min(best_score, 0.89)), 2), "TF-IDF similarity fallback"
+        return "General Query", 0.4, "No strong match; routed as general query"
 
-    # Simple offline fallback for environments that have not installed sklearn.
     input_terms = set(text.split())
     best_label = "General Query"
     best_score = 0
@@ -191,49 +171,55 @@ def classify_category(description: str) -> str:
         if score > best_score:
             best_label = label
             best_score = score
-    return best_label
+    if best_score > 0:
+        return best_label, 0.55, "Token overlap fallback"
+    return "General Query", 0.4, "No strong match; routed as general query"
 
 
-def score_priority(description: str, category: str) -> str:
+def score_priority(description: str, category: str) -> tuple[str, str]:
     """Assign priority from trigger terms and category-level defaults."""
-
     text = normalise_text(description)
-    if category == "Compliance/Fraud" or _contains_any(text, HIGH_PRIORITY_TERMS):
-        return "High"
-    if category in {"Refund", "Payment Issue"} or _contains_any(text, MEDIUM_PRIORITY_TERMS):
-        return "Medium"
-    if category in {"Missing Documents", "General Query"} or _contains_any(text, LOW_PRIORITY_TERMS):
-        return "Low"
-    return "Low"
+    high_matches = _matched_terms(text, HIGH_PRIORITY_TERMS)
+    if category == "Compliance/Fraud" or high_matches:
+        reason = "Compliance/fraud category" if category == "Compliance/Fraud" else f"High-priority trigger: {', '.join(high_matches[:3])}"
+        return "High", reason
+
+    medium_matches = _matched_terms(text, MEDIUM_PRIORITY_TERMS)
+    if category in {"Refund", "Payment Issue"} or medium_matches:
+        reason = f"Medium-priority category: {category}"
+        if medium_matches:
+            reason = f"Medium-priority trigger: {', '.join(medium_matches[:3])}"
+        return "Medium", reason
+
+    low_matches = _matched_terms(text, LOW_PRIORITY_TERMS)
+    if category in {"Missing Documents", "General Query"} or low_matches:
+        return "Low", f"Lower-risk category: {category}"
+    return "Low", "Default low priority"
 
 
 def route_case(category: str) -> str:
     """Return the assigned service team for a category."""
-
     return TEAMS_BY_CATEGORY.get(category, "Customer Support")
 
 
 def triage_case(description: str) -> TriageResult:
-    """Classify, score, route, and set SLA for a submitted case."""
-
-    category = classify_category(description)
-    priority = score_priority(description, category)
+    """Classify, score, route, set SLA and explain a submitted case."""
+    category, confidence, category_reason = classify_category(description)
+    priority, priority_reason = score_priority(description, category)
     assigned_team = route_case(category)
     sla_days = SLA_DAYS_BY_PRIORITY[priority]
-    return TriageResult(category, priority, assigned_team, sla_days)
+    explanation = f"{category_reason}. {priority_reason}. Routed to {assigned_team}; SLA {sla_days} days."
+    return TriageResult(category, priority, assigned_team, sla_days, confidence, explanation)
 
 
 def calculate_sla_status(row: pd.Series, today: date | None = None) -> str:
     """Return On Track, At Risk, Overdue, or Closed for one case row."""
-
     if row.get("status") == "Closed":
         return "Closed"
-
     today = today or date.today()
     submitted = pd.to_datetime(row["submission_date"]).date()
     deadline = submitted + timedelta(days=int(row["sla_days"]))
     days_remaining = (deadline - today).days
-
     if days_remaining < 0:
         return "Overdue"
     if days_remaining <= 2:
@@ -243,10 +229,8 @@ def calculate_sla_status(row: pd.Series, today: date | None = None) -> str:
 
 def add_sla_columns(df: pd.DataFrame, today: date | None = None) -> pd.DataFrame:
     """Add deadline, days remaining, and SLA status columns to case data."""
-
     if df.empty:
         return df.copy()
-
     enriched = df.copy()
     today = today or date.today()
     submitted = pd.to_datetime(enriched["submission_date"])
@@ -259,10 +243,8 @@ def add_sla_columns(df: pd.DataFrame, today: date | None = None) -> pd.DataFrame
 
 def next_case_id(df: pd.DataFrame) -> str:
     """Create the next readable case identifier."""
-
     if df.empty or "case_id" not in df.columns:
         return "CASE-0001"
-
     numeric_ids = (
         df["case_id"]
         .astype(str)
@@ -276,5 +258,4 @@ def next_case_id(df: pd.DataFrame) -> str:
 
 def parse_submission_date(value: str | date | datetime) -> str:
     """Store submission dates consistently as ISO strings."""
-
     return pd.to_datetime(value).date().isoformat()

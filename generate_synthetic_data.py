@@ -12,19 +12,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from case_logic import STATUS_OPTIONS, parse_submission_date, triage_case
+from case_logic import parse_submission_date, triage_case
+from config import CUSTOMER_TYPES, DATA_PATH as OUTPUT_PATH, STATUS_OPTIONS
 
 
 RANDOM_SEED = 42
-OUTPUT_PATH = Path("data/synthetic_cases.csv")
-
-CUSTOMER_TYPES = [
-    "Individual",
-    "Small Business",
-    "Agent",
-    "Charity",
-    "Public Body",
-]
 
 SYNTHETIC_DESCRIPTIONS = [
     "Customer reports a refund delay after an overpayment adjustment.",
@@ -93,6 +85,8 @@ def generate_cases(row_count: int = 220) -> pd.DataFrame:
                 "status": status,
                 "submission_date": parse_submission_date(submitted),
                 "sla_days": triage.sla_days,
+                "triage_confidence": triage.confidence,
+                "triage_explanation": triage.explanation,
                 "resolution_notes": note,
             }
         )

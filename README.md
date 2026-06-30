@@ -1,17 +1,21 @@
 # Intelligent Case Management Assistant
 
-A portfolio-ready, Power Platform-inspired case triage system for a public-sector tax/customer-service environment. The app uses synthetic data only and does not include real taxpayer, HMRC, customer, or personal data.
+A portfolio-ready, Power Platform-inspired case triage system for a public-sector tax/customer-service environment. The app uses synthetic data only and does **not** include real taxpayer, HMRC, customer, or personal data.
+
+## Portfolio Summary
+
+This project demonstrates how data science, automation, workflow design and operational dashboards can improve case-management processes. It mirrors the kind of low-code/no-code solution thinking used in Power Apps, Power Automate and Power BI, while being implemented as an accessible Python prototype.
 
 ## What It Does
 
-- Generates synthetic case data with case identifiers, customer type, description, category, priority, routing team, status, submission date, SLA days, and resolution notes.
+- Generates synthetic case data with case identifiers, customer type, description, category, priority, routing team, status, submission date, SLA days, triage confidence, triage explanation and resolution notes.
 - Classifies new case descriptions into:
   - Refund
   - Payment Issue
   - Compliance/Fraud
   - Missing Documents
   - General Query
-- Scores priority from transparent rules:
+- Scores priority using transparent rules:
   - High: fraud, suspicious, duplicate claim, overdue, urgent, legal, compliance.
   - Medium: refund delays and failed payments.
   - Low: missing documents and general queries.
@@ -21,23 +25,53 @@ A portfolio-ready, Power Platform-inspired case triage system for a public-secto
   - Payment Issue -> Payments Team
   - Missing Documents and General Query -> Customer Support
 - Tracks SLA deadlines, flags at-risk cases, and flags overdue cases.
-- Supports status updates: New, In Progress, Escalated, Closed.
+- Captures an audit trail when cases are created or updated.
+- Supports workflow status updates: New, In Progress, Escalated, Closed.
 - Provides dashboard and manager views with interactive Plotly visuals.
+
+## Architecture
+
+```text
+Synthetic Case Data
+       |
+       v
+Streamlit User Interface
+       |
+       v
+Triage Engine: keyword rules + TF-IDF similarity fallback
+       |
+       +--> Category classification
+       +--> Priority scoring
+       +--> Team routing
+       +--> SLA assignment
+       +--> Explainability note
+       |
+       v
+CSV Persistence Layer + Audit Log
+       |
+       v
+Operational Dashboards and Manager View
+```
 
 ## Project Structure
 
 ```text
 intelligent-case-management-assistant/
-|-- app.py
-|-- case_logic.py
-|-- generate_synthetic_data.py
-|-- requirements.txt
-|-- README.md
-|-- run_app.bat
-|-- data/
-|   `-- synthetic_cases.csv
-`-- screenshots/
-    `-- .gitkeep
+├── app.py                         # Streamlit app and user interface
+├── case_logic.py                  # Classification, priority, routing and SLA logic
+├── config.py                      # Shared categories, statuses, paths and mappings
+├── data_store.py                  # CSV persistence and audit logging layer
+├── generate_synthetic_data.py     # Synthetic dataset generator
+├── requirements.txt
+├── README.md
+├── run_app.bat
+├── data/
+│   ├── synthetic_cases.csv
+│   └── audit_log.csv              # Created after app interactions
+├── screenshots/
+│   └── .gitkeep
+└── tests/
+    └── test_case_logic.py
 ```
 
 ## Run Locally
@@ -49,8 +83,6 @@ Double-click `run_app.bat`, or run this from the project folder:
 ```powershell
 .\run_app.bat
 ```
-
-The script creates a virtual environment, installs dependencies, refreshes the synthetic dataset, and starts Streamlit.
 
 ### Manual Option
 
@@ -79,22 +111,32 @@ python generate_synthetic_data.py
 streamlit run app.py
 ```
 
+5. Optional: run tests.
+
+```bash
+pytest
+```
+
 ## App Pages
 
-- **Dashboard:** operational KPIs, category mix, priority split, open vs closed cases, SLA status, team workload, and monthly trends.
-- **New Case:** synthetic case submission form with automated classification, priority scoring, routing, and SLA assignment.
+- **Dashboard:** operational KPIs, category mix, priority split, workflow status, SLA status, team workload, and monthly trends.
+- **New Case:** synthetic case submission form with automated classification, priority scoring, routing, SLA assignment and explainability note.
 - **Case Review:** searchable case table with status and resolution-note updates.
-- **Manager View:** team workload, SLA exposure, and a queue of at-risk or overdue open cases.
+- **Manager View:** team workload, SLA exposure, escalation queue and audit trail.
 
 ## Data Ethics Note
 
-All records in `data/synthetic_cases.csv` are generated from fictional text templates. The project is designed to demonstrate case triage, NLP-assisted routing, workflow management, and dashboarding patterns without using sensitive or personal information.
+All records in `data/synthetic_cases.csv` are generated from fictional text templates. The project is designed to demonstrate case triage, NLP-assisted routing, workflow management and dashboarding patterns without using sensitive or personal information.
 
 ## Suggested Screenshots
 
-The `screenshots` folder is included as a placeholder. After running the app, capture:
+Capture the following for your portfolio:
 
 - Dashboard overview
-- New case submission
+- New case submission showing triage explanation
 - Case review update flow
-- Manager SLA view
+- Manager SLA and audit-trail view
+
+## CV Wording
+
+Built an Intelligent Case Management Assistant using Python, Streamlit, Pandas, Scikit-learn and Plotly to automate case triage, priority scoring, SLA monitoring and team routing using synthetic public-sector case data. Designed explainable classification rules, audit logging and interactive dashboards to support operational visibility, workload management and data-driven decision making.
